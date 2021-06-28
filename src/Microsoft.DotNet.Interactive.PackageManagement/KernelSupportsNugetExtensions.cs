@@ -8,6 +8,7 @@ using System.CommandLine.Invocation;
 using System.CommandLine.Rendering;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Html;
 using Microsoft.DotNet.Interactive.Commands;
@@ -19,8 +20,8 @@ namespace Microsoft.DotNet.Interactive
 {
     public static class KernelSupportsNugetExtensions
     {
-        public static T UseNugetDirective<T>(this T kernel) 
-            where T: Kernel, ISupportNuget
+        public static T UseNugetDirective<T>(this T kernel)
+            where T : Kernel, ISupportNuget
         {
             kernel.AddDirective(i());
             kernel.AddDirective(r());
@@ -56,9 +57,7 @@ namespace Microsoft.DotNet.Interactive
 
         private static Command r()
         {
-            var rDirective = new Command("#r")
-            {
-                new Argument<PackageReferenceOrFileInfo>(
+            Argument arg = new Argument<PackageReferenceOrFileInfo>(
                     result =>
                     {
                         var token = result.Tokens
@@ -81,9 +80,27 @@ namespace Microsoft.DotNet.Interactive
 
                         return null;
                     })
+            {
+                Name = "package"
+            };
+
+            arg.AddSuggestions((parseResult, textToMatch) =>
+            {
+                var rawInput = parseResult?.RawInput ?? "";
+                if (rawInput.Contains("nuget:"))
                 {
-                    Name = "package"
+                    return NugetPackageCompletion.GetNugetPackageSuggestionAsync(rawInput).Result;
                 }
+                if (parseResult.Tokens.Count == 1)
+                {
+                    return new[] { "\"nuget: " };
+                }
+                return Enumerable.Empty<string>();
+            });
+
+            var rDirective = new Command("#r", enforceTextMatch: false)
+            {
+                arg
             };
 
             rDirective.Handler = CommandHandler.Create<PackageReferenceOrFileInfo, KernelInvocationContext>(HandleAddPackageReference);

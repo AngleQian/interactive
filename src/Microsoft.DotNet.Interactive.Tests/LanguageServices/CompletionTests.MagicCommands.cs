@@ -335,6 +335,102 @@ namespace Microsoft.DotNet.Interactive.Tests.LanguageServices
                     .Should()
                     .Contain(variableName);
             }
+
+            [Fact]
+            public async Task Pound_r_suggests_nuget_colon_prefix()
+            {
+                string markupCode = "#r $$";
+                using var kernel = CreateKernel(Language.CSharp);
+                await SubmitCode(kernel, markupCode);
+                MarkupTestFile.GetLineAndColumn(markupCode, out var code, out var line, out var character);
+                await kernel.SendAsync(new RequestCompletions(code, new LinePosition(line, character)));
+
+                KernelEvents
+                    .Should()
+                    .ContainSingle<CompletionsProduced>().Which.Completions
+                    .Should()
+                    .Contain(
+                        ci => ci.DisplayText.Equals("\"nuget: "));
+            }
+
+            [Theory]
+            [InlineData("#r nuget:$$", "nuget:")]
+            [InlineData("#r \"nuget:$$", "\"nuget:")]
+            [InlineData("#r \"nuget: $$", "")]
+            [InlineData("#r \"nuget:$$\"", "\"nuget:")]
+            [InlineData("#r \"nuget: $$\"", "")]
+            public async Task Nuget_package_completion_suggests_popular_packages(
+                string markupCode, string requiredPrefix)
+            {
+                using var kernel = CreateKernel(Language.CSharp);
+                await SubmitCode(kernel, markupCode);
+                MarkupTestFile.GetLineAndColumn(markupCode, out var code, out var line, out var character);
+                await kernel.SendAsync(new RequestCompletions(code, new LinePosition(line, character)));
+
+                KernelEvents
+                    .Should()
+                    .ContainSingle<CompletionsProduced>().Which.Completions
+                    .Should()
+                    .Contain(
+                        ci => ci.DisplayText.Contains("Newtonsoft.Json")
+                            && ci.DisplayText.StartsWith(requiredPrefix));
+            }
+            
+            [Theory]
+            [InlineData("#r nuget:dependencyinj$$", "nuget:")]
+            [InlineData("#r \"nuget:dependency injection$$", "")]
+            [InlineData("#r \"nuget: microsoft extensions dependency injection $$", "")]
+            [InlineData("#r \"nuget:Microsoft.Extensions.DependencyInj$$\"", "\"nuget:")]
+            [InlineData("#r \"nuget: Microsoft.Extensions.DependencyInj $$\"", "")]
+            public async Task Nuget_package_completion_suggests_relevant_packages_with_fuzzy_search(
+                string markupCode, string requiredPrefix)
+            {
+                using var kernel = CreateKernel(Language.CSharp);
+                await SubmitCode(kernel, markupCode);
+                MarkupTestFile.GetLineAndColumn(markupCode, out var code, out var line, out var character);
+                await kernel.SendAsync(new RequestCompletions(code, new LinePosition(line, character)));
+
+                KernelEvents
+                    .Should()
+                    .ContainSingle<CompletionsProduced>().Which.Completions
+                    .Should()
+                    .Contain(
+                        ci => ci.DisplayText.Contains("Microsoft.Extensions.DependencyInjection")
+                            && ci.DisplayText.StartsWith(requiredPrefix));
+            }
+
+            [Theory]
+            [InlineData("#r nuget:Microsoft.Extensions.DependencyInjection$$", "nuget:Microsoft.Extensions.DependencyInjection,")]
+            [InlineData("#r \"nuget:Microsoft.Extensions.DependencyInjection,$$", "\"nuget:Microsoft.Extensions.DependencyInjection,")]
+            [InlineData("#r \"nuget:Microsoft.Extensions.DependencyInjection ,$$", ",")]
+            [InlineData("#r \"nuget: Microsoft.Extensions.DependencyInjection$$", "Microsoft.Extensions.DependencyInjection,")]
+            [InlineData("#r \"nuget: Microsoft.Extensions.DependencyInjection $$", "")]
+            [InlineData("#r \"nuget: Microsoft.Extensions.DependencyInjection ,$$", ",")]
+            [InlineData("#r \"nuget:Microsoft.Extensions.DependencyInjection,$$\"", "\"nuget:Microsoft.Extensions.DependencyInjection,")]
+            [InlineData("#r \"nuget:Microsoft.Extensions.DependencyInjection ,$$\"", ",")]
+            [InlineData("#r \"nuget: Microsoft.Extensions.DependencyInjection$$\"", "Microsoft.Extensions.DependencyInjection,")]
+            [InlineData("#r \"nuget: Microsoft.Extensions.DependencyInjection $$\"", "")]
+            [InlineData("#r \"nuget: Microsoft.Extensions.DependencyInjection ,$$\"", ",")]
+            public async Task Nuget_package_completion_suggests_all_versions_when_given_exact_package_name(
+                string markupCode, string requiredPrefix)
+            {
+                using var kernel = CreateKernel(Language.CSharp);
+                await SubmitCode(kernel, markupCode);
+                MarkupTestFile.GetLineAndColumn(markupCode, out var code, out var line, out var character);
+                await kernel.SendAsync(new RequestCompletions(code, new LinePosition(line, character)));
+
+                KernelEvents
+                    .Should()
+                    .ContainSingle<CompletionsProduced>().Which.Completions
+                    .Should()
+                    .Contain(
+                        ci => ci.DisplayText.Contains("5.0.1")
+                            && ci.DisplayText.StartsWith(requiredPrefix))
+                    .And
+                    .Contain(
+                        ci => ci.DisplayText.Contains("6.0.0-preview.4.21253.7")
+                            && ci.DisplayText.StartsWith(requiredPrefix));
+            }
         }
     }
 }
